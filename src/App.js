@@ -1,6 +1,7 @@
 
 import Carousel from './components/Carousel';
 import Footer from './components/Footer';
+import MenuItems from './components/MenuItems';
 
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
           cum tempore temporibus nam perspiciatis.
         </p>
       </div>
+      <MenuItems />
       <Footer />
     </div>
   );
