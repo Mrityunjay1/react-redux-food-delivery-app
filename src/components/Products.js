@@ -2,16 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { connect } from 'react-redux';
 import { Redirect } from 'react-router-dom';
 import { getAllProducts } from '../actions/productsActions';
+import { getToppings } from '../actions/toppingsActions';
 import { getQueryStringValue } from '../utils/functions';
-import Header from './Header';
-import Layout from './Layout';
 import Product from './Product';
+import Layout from './Layout';
+import ToppingsModal from './ToppingsModal';
+import { addToCartAction } from '../actions/cartActions';
 
-const Products = ({ dispatch, products, isLoading, isFailed, location }) => {
+const Products = ({
+  dispatch,
+  products,
+  toppings,
+  isLoading,
+  isFailed,
+  location
+}) => {
   const [category, setCategory] = useState('');
   const [selectedFilter, setSelectedFilter] = useState(false);
+  const [checkedState, setCheckedState] = useState([]);
+  const [productQuantity, setProductQuantity] = useState(1);
+  const [selectedProduct, setSelectedProduct] = useState({});
+  const [selectedToppingsCount, setSelectedToppingsCount] = useState(0);
+  const [totalOrderPrice, setTotalOrderPrice] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
   const [filteredResults, setFilteredResults] = useState([]);
   const { search = '' } = location;
+  const [cartProducts, setCartProducts] = useState([]);
+
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -29,6 +47,122 @@ const Products = ({ dispatch, products, isLoading, isFailed, location }) => {
     setFilteredResults(products);
   }, [products]);
 
+  useEffect(() => {
+    dispatch(getToppings());
+  }, []);
+
+  const toggleModal = (id, title, image, price) => {
+    if (id) {
+      setSelectedProduct({
+        id,
+        title,
+        image,
+        price,
+        productPrice: price
+      });
+      setModalTitle(title);
+    }
+    setShowModal(!showModal);
+  };
+
+  const addProduct = () => {
+    const { id, title, image } = selectedProduct;
+  
+    let isAlreadyAdded = false;
+    const isPizzaCategory = category === 'pizza';
+    let cart = cartProducts.map((cartProduct) => {
+      if (cartProduct.id === id) {
+        isAlreadyAdded = true;
+        cartProduct.quantity = productQuantity;
+        cartProduct.price = totalOrderPrice;
+        cartProducts.category = category;
+        if (isPizzaCategory) {
+          cartProduct.toppings = checkedState
+            .map((isChecked, index) =>
+              isChecked ? toppings[index].name : null
+            )
+            .filter(Boolean);
+        }
+        return cartProduct;
+      } else {
+        return cartProduct;
+      }
+    });
+  
+    if (!isAlreadyAdded) {
+      cart = [
+        ...cart,
+        {
+          id,
+          title,
+          image,
+          toppings: isPizzaCategory
+            ? checkedState
+                .map((isChecked, index) =>
+                  isChecked ? toppings[index].name : null
+                )
+                .filter(Boolean)
+            : null,
+          quantity: productQuantity,
+          price: totalOrderPrice,
+          category
+        }
+      ];
+  
+      if (isPizzaCategory) {
+        // remove toppings from non-pizza category products
+        cart = cart.map((item) => {
+          if (
+            (item.category === 'pizza' && item.toppings.length > 0) ||
+            item.category === 'pizza'
+          ) {
+            return item;
+          } else {
+            delete item.toppings;
+            return item;
+          }
+        });
+      }
+    }
+  
+    setCartProducts(cart);
+    setShowModal(!showModal);
+    dispatch(addToCartAction(cart));
+  };
+
+  const handleToppingsSelection = (position) => {
+    const updatedCheckedState = checkedState.map((item, index) =>
+      index === position ? !item : item
+    );
+    setCheckedState(updatedCheckedState);
+    setSelectedToppingsCount(
+      updatedCheckedState.filter((value) => value === true).length
+    );
+
+    const totalPrice = updatedCheckedState.reduce(
+      (sum, currentState, index) => {
+        if (currentState === true) {
+          return sum + toppings[index].price;
+        }
+        return sum;
+      },
+      0
+    );
+
+    setSelectedProduct({
+      ...selectedProduct,
+      price: totalPrice
+    });
+  };
+
+  const handleQuantityChange = (operation) => {
+    if (operation === 'increment') {
+      setProductQuantity(productQuantity + 1);
+    } else if (operation === 'decrement') {
+      setProductQuantity(productQuantity > 1 ? productQuantity - 1 : 1);
+    }
+  };
+
   const handleFilterChange = () => {
     const isVeg = !selectedFilter;
     setSelectedFilter(isVeg);
@@ -39,32 +173,31 @@ const Products = ({ dispatch, products, isLoading, isFailed, location }) => {
   };
 
   return (
-    <React.Fragment>
-        <Header />
+    <Layout>
       {search ? (
-        <div className='products'>
-          <div className='main-title'>{category}</div>
+        <div className="products">
+          <div className="main-title">{category}</div>
           {category === 'pizza' && (
-            <div className='filters'>
+            <div className="filters">
               <input
-                type='checkbox'
-                id='filter'
-                className='custom-checkbox'
-                name='filter'
-                value='veg-only'
+                type="checkbox"
+                id="filter"
+                className="custom-checkbox"
+                name="filter"
+                value="veg-only"
                 checked={selectedFilter}
                 onChange={handleFilterChange}
               />{' '}
-              <label htmlFor='filter'>Veg only</label>
+              <label htmlFor="filter">Veg only</label>
             </div>
           )}
           {isFailed && (
-            <p className='error-msg'>
+            <p className="error-msg">
               Error while loading products. Please try again.
             </p>
           )}
           {isLoading ? (
-            <p className='loading'>Loading...</p>
+            <p className="loading">Loading...</p>
           ) : (
             filteredResults.map(
               ({
@@ -88,27 +221,43 @@ const Products = ({ dispatch, products, isLoading, isFailed, location }) => {
                   image={image?.url}
                   isVeg={is_veg}
                   category={category}
+                  toggleModal={toggleModal}
                 />
               )
             )
           )}
         </div>
       ) : (
-        <Redirect to='/' />
+        <Redirect to="/" />
       )}
-    </React.Fragment>
+      <ToppingsModal
+        showModal={showModal}
+        toggleModal={toggleModal}
+        modalTitle={modalTitle}
+        toppings={toppings}
+        checkedState={checkedState}
+        productQuantity={productQuantity}
+        selectedToppingsCount={selectedToppingsCount}
+        totalOrderPrice={totalOrderPrice}
+        handleQuantityChange={handleQuantityChange}
+        handleToppingsSelection={handleToppingsSelection}
+        addProduct={addProduct}
+      />
+    </Layout>
   );
 };
 
 const mapStateToProps = (state) => {
   const {
-    products: { data, isLoading, isFailed }
+    products: { data, isLoading, isFailed },
+    toppings
   } = state;
 
   return {
     products: data,
-    isLoading: isLoading,
-    isFailed: isFailed
+    toppings: toppings.data,
+    isLoading,
+    isFailed
   };
 };
 
